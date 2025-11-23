@@ -9,6 +9,7 @@ import json
 import sys
 import os
 import re
+import difflib
 from html import escape
 from typing import Dict, List, Any, Optional
 
@@ -115,8 +116,134 @@ class SessionRenderer:
         </div>
         '''
 
-    def render_tool_result(self, result: Dict[str, Any], tool_name: str = '') -> str:
+    def render_edit_diff(self, old_string: str, new_string: str, file_path: str = '') -> str:
+        """Render a diff for Edit tool results."""
+        # Generate unified diff
+        old_lines = old_string.splitlines(keepends=True)
+        new_lines = new_string.splitlines(keepends=True)
+
+        diff = list(difflib.unified_diff(old_lines, new_lines, lineterm=''))
+
+        if not diff:
+            return '<div class="tool-result"><pre><code>No changes</code></pre></div>'
+
+        # Skip the diff header lines (---, +++, @@)
+        diff_body = []
+        old_line_num = 0
+        new_line_num = 0
+
+        for line in diff[2:]:  # Skip first two lines (--- and +++)
+            if line.startswith('@@'):
+                # Parse line numbers from @@ -old_start,old_count +new_start,new_count @@
+                match = re.match(r'@@ -(\d+),?\d* \+(\d+),?\d* @@', line)
+                if match:
+                    old_line_num = int(match.group(1)) - 1
+                    new_line_num = int(match.group(2)) - 1
+                continue
+
+            if line.startswith('-'):
+                old_line_num += 1
+                diff_body.append({
+                    'type': 'delete',
+                    'old_line': old_line_num,
+                    'new_line': '',
+                    'content': line[1:]
+                })
+            elif line.startswith('+'):
+                new_line_num += 1
+                diff_body.append({
+                    'type': 'add',
+                    'old_line': '',
+                    'new_line': new_line_num,
+                    'content': line[1:]
+                })
+            else:
+                # Context line
+                old_line_num += 1
+                new_line_num += 1
+                diff_body.append({
+                    'type': 'context',
+                    'old_line': old_line_num,
+                    'new_line': new_line_num,
+                    'content': line[1:] if line.startswith(' ') else line
+                })
+
+        # Build HTML
+        html_lines = []
+        if file_path:
+            html_lines.append(f'<div class="diff-file-header">• Edit {escape(file_path)}</div>')
+
+        # Check if we should collapse
+        total_lines = len(diff_body)
+        should_collapse = total_lines > 10
+
+        if should_collapse:
+            # Show first 5 lines
+            preview_html = self._render_diff_lines(diff_body[:5])
+            full_html = self._render_diff_lines(diff_body)
+            hidden_count = total_lines - 5
+
+            return f'''
+            <div class="edit-diff collapsible">
+                {html_lines[0] if html_lines else ''}
+                <div class="diff-preview">
+                    {preview_html}
+                    <div class="diff-expand-link" onclick="this.parentElement.parentElement.classList.toggle('expanded')">
+                        Show full diff ({hidden_count} more lines)
+                    </div>
+                </div>
+                <div class="diff-full">
+                    {full_html}
+                </div>
+            </div>
+            '''
+        else:
+            diff_html = self._render_diff_lines(diff_body)
+            return f'''
+            <div class="edit-diff">
+                {html_lines[0] if html_lines else ''}
+                {diff_html}
+            </div>
+            '''
+
+    def _render_diff_lines(self, diff_lines: List[Dict[str, Any]]) -> str:
+        """Render diff lines as HTML."""
+        html = '<div class="diff-lines">'
+        for line in diff_lines:
+            line_type = line['type']
+            old_num = line['old_line']
+            new_num = line['new_line']
+            content = escape(line['content'].rstrip('\n'))
+
+            if line_type == 'delete':
+                prefix = '-'
+                css_class = 'diff-del'
+            elif line_type == 'add':
+                prefix = '+'
+                css_class = 'diff-add'
+            else:
+                prefix = ''
+                css_class = 'diff-context'
+
+            html += f'''<div class="diff-line {css_class}">
+                <span class="diff-line-num old">{old_num if old_num else ''}</span>
+                <span class="diff-line-num new">{new_num if new_num else ''}</span>
+                <span class="diff-prefix">{prefix}</span>
+                <span class="diff-content">{content}</span>
+            </div>'''
+
+        html += '</div>'
+        return html
+
+    def render_tool_result(self, result: Dict[str, Any], tool_name: str = '', tool_input: Dict[str, Any] = None) -> str:
         """Render a tool result block."""
+        # Handle Edit tool specially - show diff
+        if tool_name == 'Edit' and tool_input:
+            old_string = tool_input.get('old_string', '')
+            new_string = tool_input.get('new_string', '')
+            file_path = tool_input.get('file_path', '')
+            return self.render_edit_diff(old_string, new_string, file_path)
+
         content = result.get('content', '')
 
         # Handle list content (for structured results)
@@ -256,7 +383,8 @@ class SessionRenderer:
                     # Look for corresponding tool result in next messages
                     tool_id = item.get('id')
                     tool_name = item.get('name', '')
-                    result_html = self.find_and_render_tool_result(tool_id, tool_name)
+                    tool_input = item.get('input', {})
+                    result_html = self.find_and_render_tool_result(tool_id, tool_name, tool_input)
                     if result_html:
                         html_parts.append(result_html)
 
@@ -266,13 +394,13 @@ class SessionRenderer:
 
         return ''
 
-    def find_and_render_tool_result(self, tool_id: str, tool_name: str) -> str:
+    def find_and_render_tool_result(self, tool_id: str, tool_name: str, tool_input: Dict[str, Any] = None) -> str:
         """Find and render the tool result for a given tool use ID."""
         for msg in self.messages:
             if msg.get('type') == 'user':
                 for item in msg.get('message', {}).get('content', []):
                     if item.get('type') == 'tool_result' and item.get('tool_use_id') == tool_id:
-                        return self.render_tool_result(item, tool_name)
+                        return self.render_tool_result(item, tool_name, tool_input)
         return ''
 
     def get_css(self) -> str:
@@ -492,6 +620,128 @@ class SessionRenderer:
 
         em {
             font-style: italic;
+        }
+
+        /* Edit diff styling */
+        .edit-diff {
+            margin: 8px 0;
+            border: 1px solid #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            background-color: #ffffff;
+        }
+
+        .diff-file-header {
+            padding: 8px 12px;
+            background-color: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 13px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .diff-lines {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .diff-line {
+            display: flex;
+            align-items: stretch;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .diff-line:last-child {
+            border-bottom: none;
+        }
+
+        .diff-line-num {
+            padding: 2px 8px;
+            text-align: right;
+            color: #9ca3af;
+            background-color: #f9fafb;
+            border-right: 1px solid #e5e7eb;
+            min-width: 40px;
+            flex-shrink: 0;
+            user-select: none;
+        }
+
+        .diff-line-num.old {
+            border-right: none;
+        }
+
+        .diff-line-num.new {
+            border-right: 1px solid #e5e7eb;
+        }
+
+        .diff-prefix {
+            padding: 2px 4px;
+            width: 20px;
+            flex-shrink: 0;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .diff-content {
+            padding: 2px 8px;
+            flex-grow: 1;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .diff-del {
+            background-color: #fef2f2;
+        }
+
+        .diff-del .diff-prefix {
+            color: #dc2626;
+        }
+
+        .diff-del .diff-content {
+            background-color: rgba(239, 68, 68, 0.1);
+        }
+
+        .diff-add {
+            background-color: #f0fdf4;
+        }
+
+        .diff-add .diff-prefix {
+            color: #16a34a;
+        }
+
+        .diff-add .diff-content {
+            background-color: rgba(34, 197, 94, 0.15);
+        }
+
+        .diff-context {
+            background-color: #ffffff;
+        }
+
+        .diff-expand-link {
+            text-align: center;
+            padding: 8px;
+            background-color: #f9fafb;
+            color: #3b82f6;
+            cursor: pointer;
+            border-top: 1px solid #e5e7eb;
+            font-size: 13px;
+        }
+
+        .diff-expand-link:hover {
+            background-color: #f3f4f6;
+        }
+
+        .edit-diff.collapsible .diff-full {
+            display: none;
+        }
+
+        .edit-diff.collapsible.expanded .diff-preview {
+            display: none;
+        }
+
+        .edit-diff.collapsible.expanded .diff-full {
+            display: block;
         }
         '''
 
