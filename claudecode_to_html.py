@@ -124,12 +124,35 @@ class SessionRenderer:
         if not content:
             return ''
 
+        # Special handling for Edit tool - render as diff with colors
+        if tool_name == 'Edit':
+            return self.render_edit_diff(content)
+
         # Check if it's a long file read (has line numbers)
         is_file_content = '→' in content and '\n' in content
-        lines = content.split('\n') if is_file_content else []
-        is_long = len(lines) > 20
+        lines = content.split('\n')
 
-        if is_file_content and is_long:
+        # Bash and Grep should be collapsed by default, showing only 3 lines
+        if tool_name in ['Bash', 'Grep']:
+            if len(lines) > 3:
+                preview_lines = lines[:3]
+                preview = '\n'.join(preview_lines)
+
+                return f'''
+                <div class="tool-result collapsible">
+                    <div class="tool-result-preview" onclick="this.parentElement.classList.toggle('expanded')">
+                        <pre><code>{escape(preview)}</code></pre>
+                        <div class="expand-hint">Click to show full output ({len(lines)} lines)</div>
+                    </div>
+                    <div class="tool-result-full">
+                        <pre><code>{escape(content)}</code></pre>
+                    </div>
+                </div>
+                '''
+
+        # Long file content (Read tool)
+        is_long = is_file_content and len(lines) > 20
+        if is_long:
             # Show first 10 and last 5 lines
             preview_lines = lines[:10] + ['... (content hidden) ...'] + lines[-5:]
             preview = '\n'.join(preview_lines)
@@ -151,6 +174,34 @@ class SessionRenderer:
                 <pre><code>{escape(content)}</code></pre>
             </div>
             '''
+
+    def render_edit_diff(self, content: str) -> str:
+        """Render Edit tool output as a colored diff."""
+        lines = content.split('\n')
+        colored_lines = []
+
+        for line in lines:
+            escaped_line = escape(line)
+            if line.startswith('+') and not line.startswith('+++'):
+                # Addition - green
+                colored_lines.append(f'<span class="diff-add">{escaped_line}</span>')
+            elif line.startswith('-') and not line.startswith('---'):
+                # Deletion - red
+                colored_lines.append(f'<span class="diff-del">{escaped_line}</span>')
+            elif line.startswith('@@'):
+                # Diff header - cyan
+                colored_lines.append(f'<span class="diff-header">{escaped_line}</span>')
+            else:
+                # Context line
+                colored_lines.append(escaped_line)
+
+        diff_html = '\n'.join(colored_lines)
+
+        return f'''
+        <div class="tool-result">
+            <pre class="diff-content"><code>{diff_html}</code></pre>
+        </div>
+        '''
 
     def render_diff(self, content: str) -> str:
         """Render a diff with expand/collapse for long diffs."""
@@ -178,16 +229,21 @@ class SessionRenderer:
 
         if msg_type == 'user':
             html_parts = []
-            for item in content_items:
-                if isinstance(item, str):
-                    html_parts.append(f'<div class="message-text">{self.render_markdown(item)}</div>')
-                elif isinstance(item, dict):
-                    if item.get('type') == 'text':
-                        text = item.get('text', '')
-                        html_parts.append(f'<div class="message-text">{self.render_markdown(text)}</div>')
-                    elif item.get('type') == 'tool_result':
-                        # Tool results are usually shown inline with the tool call
-                        pass
+
+            # Handle case where content_items might be a string instead of a list
+            if isinstance(content_items, str):
+                html_parts.append(f'<div class="message-text">{self.render_markdown(content_items)}</div>')
+            else:
+                for item in content_items:
+                    if isinstance(item, str):
+                        html_parts.append(f'<div class="message-text">{self.render_markdown(item)}</div>')
+                    elif isinstance(item, dict):
+                        if item.get('type') == 'text':
+                            text = item.get('text', '')
+                            html_parts.append(f'<div class="message-text">{self.render_markdown(text)}</div>')
+                        elif item.get('type') == 'tool_result':
+                            # Tool results are usually shown inline with the tool call
+                            pass
 
             if html_parts:
                 return f'<div class="message user-message">{"".join(html_parts)}</div>'
@@ -345,9 +401,9 @@ class SessionRenderer:
 
         .tool-result {
             margin: 8px 0;
-            background-color: #f9fafb;
+            background-color: #1e1e1e;
             border-radius: 4px;
-            border: 1px solid #e5e7eb;
+            border: 1px solid #3a3a3a;
             overflow: hidden;
         }
 
@@ -371,14 +427,15 @@ class SessionRenderer:
         .expand-hint {
             text-align: center;
             padding: 8px;
-            background-color: #f3f4f6;
-            color: #6b7280;
+            background-color: #2a2a2a;
+            color: #9ca3af;
             font-size: 13px;
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid #3a3a3a;
+            cursor: pointer;
         }
 
         .expand-hint:hover {
-            background-color: #e5e7eb;
+            background-color: #333333;
         }
 
         pre {
@@ -457,6 +514,24 @@ class SessionRenderer:
 
         em {
             font-style: italic;
+        }
+
+        /* Diff coloring for Edit tool */
+        .diff-content .diff-add {
+            color: #22c55e;
+            background-color: rgba(34, 197, 94, 0.1);
+            display: block;
+        }
+
+        .diff-content .diff-del {
+            color: #ef4444;
+            background-color: rgba(239, 68, 68, 0.1);
+            display: block;
+        }
+
+        .diff-content .diff-header {
+            color: #06b6d4;
+            display: block;
         }
         '''
 
