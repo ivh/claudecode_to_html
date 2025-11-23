@@ -517,20 +517,20 @@ class SessionRenderer:
         }
 
         /* Diff coloring for Edit tool */
-        .diff-content .diff-add {
-            color: #22c55e;
+        pre.diff-content code .diff-add {
+            color: #22c55e !important;
             background-color: rgba(34, 197, 94, 0.1);
             display: block;
         }
 
-        .diff-content .diff-del {
-            color: #ef4444;
+        pre.diff-content code .diff-del {
+            color: #ef4444 !important;
             background-color: rgba(239, 68, 68, 0.1);
             display: block;
         }
 
-        .diff-content .diff-header {
-            color: #06b6d4;
+        pre.diff-content code .diff-header {
+            color: #06b6d4 !important;
             display: block;
         }
         '''
