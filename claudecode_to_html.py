@@ -12,6 +12,7 @@ import re
 import difflib
 from html import escape
 from typing import Dict, List, Any, Optional
+from datetime import datetime, timedelta
 
 
 class SessionRenderer:
@@ -46,6 +47,79 @@ class SessionRenderer:
                         self.messages.append(data)
                 except json.JSONDecodeError:
                     continue
+
+    def calculate_session_timing(self) -> Dict[str, Any]:
+        """Calculate session timing statistics."""
+        if not self.messages:
+            return {
+                'total_duration': timedelta(0),
+                'claude_working_time': timedelta(0),
+                'waiting_for_user_time': timedelta(0)
+            }
+
+        # Extract messages with timestamps
+        timestamped_messages = []
+        for msg in self.messages:
+            timestamp_str = msg.get('timestamp')
+            if timestamp_str:
+                try:
+                    timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    timestamped_messages.append({
+                        'type': msg.get('type'),
+                        'timestamp': timestamp
+                    })
+                except (ValueError, AttributeError):
+                    continue
+
+        if len(timestamped_messages) < 2:
+            return {
+                'total_duration': timedelta(0),
+                'claude_working_time': timedelta(0),
+                'waiting_for_user_time': timedelta(0)
+            }
+
+        # Calculate total session duration
+        first_timestamp = timestamped_messages[0]['timestamp']
+        last_timestamp = timestamped_messages[-1]['timestamp']
+        total_duration = last_timestamp - first_timestamp
+
+        # Calculate Claude working time and waiting for user time
+        claude_working_time = timedelta(0)
+        waiting_for_user_time = timedelta(0)
+
+        for i in range(1, len(timestamped_messages)):
+            prev_msg = timestamped_messages[i - 1]
+            curr_msg = timestamped_messages[i]
+            time_diff = curr_msg['timestamp'] - prev_msg['timestamp']
+
+            # If previous message was from user, next message is Claude working
+            if prev_msg['type'] == 'user' and curr_msg['type'] == 'assistant':
+                claude_working_time += time_diff
+            # If previous message was from assistant, next message is waiting for user
+            elif prev_msg['type'] == 'assistant' and curr_msg['type'] == 'user':
+                waiting_for_user_time += time_diff
+
+        return {
+            'total_duration': total_duration,
+            'claude_working_time': claude_working_time,
+            'waiting_for_user_time': waiting_for_user_time
+        }
+
+    def format_timedelta(self, td: timedelta) -> str:
+        """Format a timedelta in a human-readable way."""
+        total_seconds = int(td.total_seconds())
+        hours = total_seconds // 3600
+        minutes = (total_seconds % 3600) // 60
+        seconds = total_seconds % 60
+
+        parts = []
+        if hours > 0:
+            parts.append(f"{hours}h")
+        if minutes > 0 or hours > 0:
+            parts.append(f"{minutes}m")
+        parts.append(f"{seconds}s")
+
+        return ' '.join(parts)
 
     def render_markdown(self, text: str) -> str:
         """Simple markdown to HTML conversion."""
@@ -456,6 +530,36 @@ class SessionRenderer:
         .header .session-info {
             color: #666;
             font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .session-timing {
+            display: flex;
+            gap: 24px;
+            margin-top: 12px;
+            padding: 12px;
+            background-color: #f9fafb;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .timing-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .timing-label {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .timing-value {
+            font-size: 16px;
+            color: #1f2937;
+            font-weight: 600;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
         }
 
         .message {
@@ -783,6 +887,24 @@ class SessionRenderer:
         """Render the complete HTML document."""
         session_id = os.path.basename(self.jsonl_path).replace('.jsonl', '')
 
+        # Calculate session timing
+        timing = self.calculate_session_timing()
+        timing_html = f'''
+            <div class="session-timing">
+                <div class="timing-item">
+                    <span class="timing-label">Total Duration:</span>
+                    <span class="timing-value">{self.format_timedelta(timing['total_duration'])}</span>
+                </div>
+                <div class="timing-item">
+                    <span class="timing-label">Claude Working Time:</span>
+                    <span class="timing-value">{self.format_timedelta(timing['claude_working_time'])}</span>
+                </div>
+                <div class="timing-item">
+                    <span class="timing-label">Waiting for User:</span>
+                    <span class="timing-value">{self.format_timedelta(timing['waiting_for_user_time'])}</span>
+                </div>
+            </div>'''
+
         messages_html = []
         for msg in self.messages:
             rendered = self.render_message(msg)
@@ -804,6 +926,7 @@ class SessionRenderer:
         <div class="header">
             <h1>Claude Code Session</h1>
             <div class="session-info">Session ID: {escape(session_id)}</div>
+            {timing_html}
         </div>
         <div class="messages">
 {"".join(messages_html)}
