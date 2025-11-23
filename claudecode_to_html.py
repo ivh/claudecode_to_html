@@ -578,14 +578,14 @@ class SessionRenderer:
         }
 
         .message-text pre {
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+            background-color: #f3f4f6;
+            color: #1f2937;
             margin: 8px 0;
         }
 
         .message-text pre code {
             background-color: transparent;
-            color: #d4d4d4;
+            color: #1f2937;
             padding: 0;
         }
 
