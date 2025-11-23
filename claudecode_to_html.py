@@ -405,9 +405,14 @@ class SessionRenderer:
         """Find and render the tool result for a given tool use ID."""
         for msg in self.messages:
             if msg.get('type') == 'user':
-                for item in msg.get('message', {}).get('content', []):
-                    if item.get('type') == 'tool_result' and item.get('tool_use_id') == tool_id:
-                        return self.render_tool_result(item, tool_name, tool_input)
+                content = msg.get('message', {}).get('content', [])
+                # Handle case where content might be a string instead of a list
+                if isinstance(content, str):
+                    continue
+                for item in content:
+                    if isinstance(item, dict):
+                        if item.get('type') == 'tool_result' and item.get('tool_use_id') == tool_id:
+                            return self.render_tool_result(item, tool_name, tool_input)
         return ''
 
     def get_css(self) -> str:
