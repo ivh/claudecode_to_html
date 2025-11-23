@@ -60,17 +60,19 @@ class SessionRenderer:
 
         text = re.sub(r'```(\w+)?\n(.*?)```', save_code_block, text, flags=re.DOTALL)
 
+        # Process markdown on the text (WITHOUT code blocks)
+        # Headers (process before escaping so we can convert them)
+        text = re.sub(r'^### (.+)$', r'___H3_START___\1___H3_END___', text, flags=re.MULTILINE)
+        text = re.sub(r'^## (.+)$', r'___H2_START___\1___H2_END___', text, flags=re.MULTILINE)
+        text = re.sub(r'^# (.+)$', r'___H1_START___\1___H1_END___', text, flags=re.MULTILINE)
+
         # Now escape the remaining text
         html = escape(text)
 
-        # Restore code blocks with proper HTML
-        for i, block in enumerate(code_blocks):
-            match = re.match(r'```(\w+)?\n(.*?)```', block, flags=re.DOTALL)
-            if match:
-                lang = match.group(1) or ''
-                code = escape(match.group(2))
-                html = html.replace(f'___CODE_BLOCK_{i}___',
-                                   f'<pre><code class="language-{lang}">{code}</code></pre>')
+        # Convert header placeholders to HTML (after escaping)
+        html = html.replace('___H3_START___', '<h3>').replace('___H3_END___', '</h3>')
+        html = html.replace('___H2_START___', '<h2>').replace('___H2_END___', '</h2>')
+        html = html.replace('___H1_START___', '<h1>').replace('___H1_END___', '</h1>')
 
         # Inline code
         html = re.sub(r'`([^`]+)`', r'<code>\1</code>', html)
@@ -81,13 +83,18 @@ class SessionRenderer:
         # Italic
         html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
 
-        # Headers
-        html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
-        html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
-        html = re.sub(r'^# (.+)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
-
-        # Line breaks
+        # Line breaks (do this BEFORE restoring code blocks so breaks aren't added inside code)
         html = html.replace('\n', '<br>\n')
+
+        # Restore code blocks with proper HTML
+        for i, block in enumerate(code_blocks):
+            match = re.match(r'```(\w+)?\n(.*?)```', block, flags=re.DOTALL)
+            if match:
+                lang = match.group(1) or ''
+                code = escape(match.group(2))
+                # Don't add <br> tags - code blocks preserve their own newlines
+                html = html.replace(f'___CODE_BLOCK_{i}___<br>\n',
+                                   f'<pre><code class="language-{lang}">{code}</code></pre>')
 
         return html
 
