@@ -1,0 +1,539 @@
+#!/usr/bin/env python3
+"""
+Convert Claude Code session logs (.jsonl) to HTML.
+
+Usage: python claudecode_to_html.py input.jsonl [output.html]
+"""
+
+import json
+import sys
+import os
+import re
+from html import escape
+from typing import Dict, List, Any, Optional
+
+
+class SessionRenderer:
+    """Renders Claude Code session logs as HTML."""
+
+    TOOL_COLORS = {
+        'Read': '#3b82f6',     # blue
+        'Write': '#10b981',    # green
+        'Edit': '#f59e0b',     # orange
+        'Bash': '#22c55e',     # green
+        'Grep': '#8b5cf6',     # purple
+        'Glob': '#ec4899',     # pink
+        'Task': '#06b6d4',     # cyan
+        'WebFetch': '#14b8a6', # teal
+        'WebSearch': '#f97316',# orange
+        'TodoWrite': '#a855f7',# purple
+        'default': '#6b7280'   # gray
+    }
+
+    def __init__(self, jsonl_path: str):
+        self.jsonl_path = jsonl_path
+        self.messages = []
+        self.load_messages()
+
+    def load_messages(self):
+        """Load and parse JSONL file."""
+        with open(self.jsonl_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                    if data.get('type') in ['user', 'assistant', 'system']:
+                        self.messages.append(data)
+                except json.JSONDecodeError:
+                    continue
+
+    def render_markdown(self, text: str) -> str:
+        """Simple markdown to HTML conversion."""
+        if not text:
+            return ''
+
+        html = escape(text)
+
+        # Code blocks with language
+        html = re.sub(
+            r'```(\w+)?\n(.*?)```',
+            lambda m: f'<pre><code class="language-{m.group(1) or ""}">{escape(m.group(2))}</code></pre>',
+            html,
+            flags=re.DOTALL
+        )
+
+        # Inline code
+        html = re.sub(r'`([^`]+)`', r'<code>\1</code>', html)
+
+        # Bold
+        html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
+
+        # Italic
+        html = re.sub(r'\*(.+?)\*', r'<em>\1</em>', html)
+
+        # Headers
+        html = re.sub(r'^### (.+)$', r'<h3>\1</h3>', html, flags=re.MULTILINE)
+        html = re.sub(r'^## (.+)$', r'<h2>\1</h2>', html, flags=re.MULTILINE)
+        html = re.sub(r'^# (.+)$', r'<h1>\1</h1>', html, flags=re.MULTILINE)
+
+        # Line breaks
+        html = html.replace('\n', '<br>\n')
+
+        return html
+
+    def render_tool_use(self, tool: Dict[str, Any]) -> str:
+        """Render a tool use block."""
+        tool_name = tool.get('name', 'Unknown')
+        tool_input = tool.get('input', {})
+        color = self.TOOL_COLORS.get(tool_name, self.TOOL_COLORS['default'])
+
+        # Format input parameters
+        params = []
+        for key, value in tool_input.items():
+            if isinstance(value, str) and len(value) > 100:
+                value = value[:100] + '...'
+            params.append(f'{key}={repr(value)}')
+
+        params_str = ', '.join(params) if params else ''
+
+        return f'''
+        <div class="tool-use">
+            <div class="tool-header">
+                <span class="tool-dot" style="background-color: {color}"></span>
+                <span class="tool-name">{escape(tool_name)}</span>
+                {f'<span class="tool-params">{escape(params_str)}</span>' if params_str else ''}
+            </div>
+        </div>
+        '''
+
+    def render_tool_result(self, result: Dict[str, Any], tool_name: str = '') -> str:
+        """Render a tool result block."""
+        content = result.get('content', '')
+
+        # Handle list content (for structured results)
+        if isinstance(content, list):
+            # For now, just join text items
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get('type') == 'text':
+                        text_parts.append(item.get('text', ''))
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            content = '\n'.join(text_parts)
+
+        if not content:
+            return ''
+
+        # Check if it's a long file read (has line numbers)
+        is_file_content = '→' in content and '\n' in content
+        lines = content.split('\n') if is_file_content else []
+        is_long = len(lines) > 20
+
+        if is_file_content and is_long:
+            # Show first 10 and last 5 lines
+            preview_lines = lines[:10] + ['... (content hidden) ...'] + lines[-5:]
+            preview = '\n'.join(preview_lines)
+
+            return f'''
+            <div class="tool-result collapsible">
+                <div class="tool-result-preview" onclick="this.parentElement.classList.toggle('expanded')">
+                    <pre><code>{escape(preview)}</code></pre>
+                    <div class="expand-hint">Click to show full content ({len(lines)} lines)</div>
+                </div>
+                <div class="tool-result-full">
+                    <pre><code>{escape(content)}</code></pre>
+                </div>
+            </div>
+            '''
+        else:
+            return f'''
+            <div class="tool-result">
+                <pre><code>{escape(content)}</code></pre>
+            </div>
+            '''
+
+    def render_diff(self, content: str) -> str:
+        """Render a diff with expand/collapse for long diffs."""
+        lines = content.split('\n')
+        if len(lines) > 20:
+            preview = '\n'.join(lines[:15])
+            hidden_count = len(lines) - 15
+            return f'''
+            <div class="diff-block collapsible">
+                <pre class="diff-preview"><code>{escape(preview)}</code></pre>
+                <div class="expand-link" onclick="this.parentElement.classList.toggle('expanded')">
+                    Show full diff ({hidden_count} more lines)
+                </div>
+                <pre class="diff-full"><code>{escape(content)}</code></pre>
+            </div>
+            '''
+        return f'<pre class="diff-block"><code>{escape(content)}</code></pre>'
+
+    def render_message(self, msg: Dict[str, Any]) -> str:
+        """Render a single message."""
+        msg_type = msg.get('type')
+        message = msg.get('message', {})
+        role = message.get('role', '')
+        content_items = message.get('content', [])
+
+        if msg_type == 'user':
+            html_parts = []
+            for item in content_items:
+                if isinstance(item, str):
+                    html_parts.append(f'<div class="message-text">{self.render_markdown(item)}</div>')
+                elif isinstance(item, dict):
+                    if item.get('type') == 'text':
+                        text = item.get('text', '')
+                        html_parts.append(f'<div class="message-text">{self.render_markdown(text)}</div>')
+                    elif item.get('type') == 'tool_result':
+                        # Tool results are usually shown inline with the tool call
+                        pass
+
+            if html_parts:
+                return f'<div class="message user-message">{"".join(html_parts)}</div>'
+            return ''
+
+        elif msg_type == 'assistant':
+            html_parts = []
+
+            for item in content_items:
+                if isinstance(item, str):
+                    if item.strip():
+                        html_parts.append(f'<div class="message-text">{self.render_markdown(item)}</div>')
+                    continue
+
+                if not isinstance(item, dict):
+                    continue
+
+                item_type = item.get('type')
+
+                if item_type == 'text':
+                    text = item.get('text', '')
+                    if text.strip():
+                        html_parts.append(f'<div class="message-text">{self.render_markdown(text)}</div>')
+
+                elif item_type == 'thinking':
+                    # Skip thinking blocks for now (can be shown in a collapsed section)
+                    pass
+
+                elif item_type == 'tool_use':
+                    html_parts.append(self.render_tool_use(item))
+
+                    # Look for corresponding tool result in next messages
+                    tool_id = item.get('id')
+                    tool_name = item.get('name', '')
+                    result_html = self.find_and_render_tool_result(tool_id, tool_name)
+                    if result_html:
+                        html_parts.append(result_html)
+
+            if html_parts:
+                return f'<div class="message assistant-message">{"".join(html_parts)}</div>'
+            return ''
+
+        return ''
+
+    def find_and_render_tool_result(self, tool_id: str, tool_name: str) -> str:
+        """Find and render the tool result for a given tool use ID."""
+        for msg in self.messages:
+            if msg.get('type') == 'user':
+                for item in msg.get('message', {}).get('content', []):
+                    if item.get('type') == 'tool_result' and item.get('tool_use_id') == tool_id:
+                        return self.render_tool_result(item, tool_name)
+        return ''
+
+    def get_css(self) -> str:
+        """Get the CSS styles."""
+        return '''
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background-color: #f9f9f9;
+            color: #1a1a1a;
+            line-height: 1.6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            border-bottom: 2px solid #e5e5e5;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #2c2c2c;
+            margin-bottom: 5px;
+        }
+
+        .header .session-info {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .message {
+            margin-bottom: 24px;
+            padding: 16px;
+            border-radius: 6px;
+        }
+
+        .user-message {
+            background-color: #f0f4f8;
+            border-left: 3px solid #3b82f6;
+        }
+
+        .assistant-message {
+            background-color: #ffffff;
+            border-left: 3px solid #10b981;
+        }
+
+        .message-text {
+            margin-bottom: 12px;
+        }
+
+        .message-text:last-child {
+            margin-bottom: 0;
+        }
+
+        .tool-use {
+            margin: 12px 0;
+            padding: 8px 12px;
+            background-color: #f9fafb;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .tool-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+
+        .tool-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .tool-name {
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .tool-params {
+            color: #6b7280;
+            font-size: 13px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .tool-result {
+            margin: 8px 0;
+            background-color: #f9fafb;
+            border-radius: 4px;
+            border: 1px solid #e5e7eb;
+            overflow: hidden;
+        }
+
+        .tool-result.collapsible .tool-result-full {
+            display: none;
+        }
+
+        .tool-result.collapsible.expanded .tool-result-preview {
+            display: none;
+        }
+
+        .tool-result.collapsible.expanded .tool-result-full {
+            display: block;
+        }
+
+        .tool-result-preview {
+            cursor: pointer;
+            position: relative;
+        }
+
+        .expand-hint {
+            text-align: center;
+            padding: 8px;
+            background-color: #f3f4f6;
+            color: #6b7280;
+            font-size: 13px;
+            border-top: 1px solid #e5e7eb;
+        }
+
+        .expand-hint:hover {
+            background-color: #e5e7eb;
+        }
+
+        pre {
+            margin: 0;
+            padding: 12px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        code {
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 13px;
+        }
+
+        .message-text code {
+            background-color: #f3f4f6;
+            color: #1f2937;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .diff-block {
+            margin: 8px 0;
+        }
+
+        .diff-block.collapsible .diff-full {
+            display: none;
+        }
+
+        .diff-block.collapsible.expanded .diff-preview {
+            display: none;
+        }
+
+        .diff-block.collapsible.expanded .diff-full {
+            display: block;
+        }
+
+        .diff-block.collapsible.expanded .expand-link {
+            display: none;
+        }
+
+        .expand-link {
+            text-align: center;
+            padding: 8px;
+            background-color: #f3f4f6;
+            color: #3b82f6;
+            cursor: pointer;
+            border-radius: 4px;
+            margin-top: 4px;
+            font-size: 13px;
+        }
+
+        .expand-link:hover {
+            background-color: #e5e7eb;
+        }
+
+        h1, h2, h3 {
+            margin: 16px 0 8px 0;
+            color: #1f2937;
+        }
+
+        h1 { font-size: 24px; }
+        h2 { font-size: 20px; }
+        h3 { font-size: 16px; }
+
+        strong {
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        em {
+            font-style: italic;
+        }
+        '''
+
+    def get_javascript(self) -> str:
+        """Get the JavaScript for interactivity."""
+        return '''
+        // Simple toggle functionality for collapsible sections
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Claude Code session viewer loaded');
+        });
+        '''
+
+    def render_html(self) -> str:
+        """Render the complete HTML document."""
+        session_id = os.path.basename(self.jsonl_path).replace('.jsonl', '')
+
+        messages_html = []
+        for msg in self.messages:
+            rendered = self.render_message(msg)
+            if rendered:
+                messages_html.append(rendered)
+
+        return f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Session - {escape(session_id)}</title>
+    <style>
+{self.get_css()}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Claude Code Session</h1>
+            <div class="session-info">Session ID: {escape(session_id)}</div>
+        </div>
+        <div class="messages">
+{"".join(messages_html)}
+        </div>
+    </div>
+    <script>
+{self.get_javascript()}
+    </script>
+</body>
+</html>'''
+
+    def save(self, output_path: str):
+        """Save the rendered HTML to a file."""
+        html = self.render_html()
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(html)
+        print(f"Saved HTML to {output_path}")
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python claudecode_to_html.py input.jsonl [output.html]")
+        sys.exit(1)
+
+    input_path = sys.argv[1]
+
+    if not os.path.exists(input_path):
+        print(f"Error: Input file '{input_path}' not found")
+        sys.exit(1)
+
+    # Determine output path
+    if len(sys.argv) >= 3:
+        output_path = sys.argv[2]
+    else:
+        output_path = input_path.replace('.jsonl', '.html')
+
+    # Render and save
+    renderer = SessionRenderer(input_path)
+    renderer.save(output_path)
+
+
+if __name__ == '__main__':
+    main()
