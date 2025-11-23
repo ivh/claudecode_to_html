@@ -51,15 +51,25 @@ class SessionRenderer:
         if not text:
             return ''
 
+        # Process code blocks FIRST (before escaping)
+        code_blocks = []
+        def save_code_block(match):
+            code_blocks.append(match.group(0))
+            return f'___CODE_BLOCK_{len(code_blocks) - 1}___'
+
+        text = re.sub(r'```(\w+)?\n(.*?)```', save_code_block, text, flags=re.DOTALL)
+
+        # Now escape the remaining text
         html = escape(text)
 
-        # Code blocks with language
-        html = re.sub(
-            r'```(\w+)?\n(.*?)```',
-            lambda m: f'<pre><code class="language-{m.group(1) or ""}">{escape(m.group(2))}</code></pre>',
-            html,
-            flags=re.DOTALL
-        )
+        # Restore code blocks with proper HTML
+        for i, block in enumerate(code_blocks):
+            match = re.match(r'```(\w+)?\n(.*?)```', block, flags=re.DOTALL)
+            if match:
+                lang = match.group(1) or ''
+                code = escape(match.group(2))
+                html = html.replace(f'___CODE_BLOCK_{i}___',
+                                   f'<pre><code class="language-{lang}">{code}</code></pre>')
 
         # Inline code
         html = re.sub(r'`([^`]+)`', r'<code>\1</code>', html)
@@ -517,21 +527,18 @@ class SessionRenderer:
         }
 
         /* Diff coloring for Edit tool */
-        pre.diff-content code .diff-add {
+        .diff-add {
             color: #22c55e !important;
-            background-color: rgba(34, 197, 94, 0.1);
-            display: block;
+            background-color: rgba(34, 197, 94, 0.15);
         }
 
-        pre.diff-content code .diff-del {
+        .diff-del {
             color: #ef4444 !important;
-            background-color: rgba(239, 68, 68, 0.1);
-            display: block;
+            background-color: rgba(239, 68, 68, 0.15);
         }
 
-        pre.diff-content code .diff-header {
+        .diff-header {
             color: #06b6d4 !important;
-            display: block;
         }
         '''
 
