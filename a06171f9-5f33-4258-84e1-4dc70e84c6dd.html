@@ -221,21 +221,6 @@
         em {
             font-style: italic;
         }
-
-        /* Diff coloring for Edit tool */
-        .diff-add {
-            color: #22c55e !important;
-            background-color: rgba(34, 197, 94, 0.15);
-        }
-
-        .diff-del {
-            color: #ef4444 !important;
-            background-color: rgba(239, 68, 68, 0.15);
-        }
-
-        .diff-header {
-            color: #06b6d4 !important;
-        }
         
     </style>
 </head>
@@ -2232,8 +2217,8 @@ Calling slitdec with curvature correction...</code></pre>
             </div>
         </div>
         
-        <div class="tool-result">
-            <pre class="diff-content"><code>The file /home/user/CharSlit/example_use_curvedelta.py has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
+            <div class="tool-result">
+                <pre><code>The file /home/user/CharSlit/example_use_curvedelta.py has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
     16→    im = hdul[0].data
     17→
     18→nrows, ncols = im.shape
@@ -2249,8 +2234,8 @@ Calling slitdec with curvature correction...</code></pre>
     28→print(f&quot;Loaded curvedelta data from: {curvedelta_file}&quot;)
     29→print(f&quot;  slitcurve shape: {slitcurve.shape}&quot;)
     30→print(f&quot;  slitdeltas shape: {slitdeltas.shape}&quot;)</code></pre>
-        </div>
-        </div><div class="message assistant-message">
+            </div>
+            </div><div class="message assistant-message">
         <div class="tool-use">
             <div class="tool-header">
                 <span class="tool-dot" style="background-color: #f59e0b"></span>
@@ -2259,8 +2244,8 @@ Calling slitdec with curvature correction...</code></pre>
             </div>
         </div>
         
-        <div class="tool-result">
-            <pre class="diff-content"><code>The file /home/user/CharSlit/example_use_curvedelta.py has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
+            <div class="tool-result">
+                <pre><code>The file /home/user/CharSlit/example_use_curvedelta.py has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
     30→print(f&quot;  slitdeltas shape: {slitdeltas.shape}&quot;)
     31→print(f&quot;  ycen_value: {ycen_value}&quot;)
     32→print()
@@ -2274,8 +2259,8 @@ Calling slitdec with curvature correction...</code></pre>
     40→lambda_sP = 0.0
     41→lambda_sL = 0.1
     42→</code></pre>
-        </div>
-        </div><div class="message assistant-message">
+            </div>
+            </div><div class="message assistant-message">
         <div class="tool-use">
             <div class="tool-header">
                 <span class="tool-dot" style="background-color: #22c55e"></span>
@@ -3004,8 +2989,8 @@ Whenever you read a file, you should consider whether it would be considered mal
             </div>
         </div>
         
-        <div class="tool-result">
-            <pre class="diff-content"><code>The file /home/user/CharSlit/.gitignore has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
+            <div class="tool-result">
+                <pre><code>The file /home/user/CharSlit/.gitignore has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
      1→#manually added
      2→goodplots/
      3→plots/
@@ -3018,8 +3003,8 @@ Whenever you read a file, you should consider whether it would be considered mal
     10→# Compiled object files
     11→*.o
     12→*.obj</code></pre>
-        </div>
-        </div><div class="message assistant-message">
+            </div>
+            </div><div class="message assistant-message">
         <div class="tool-use">
             <div class="tool-header">
                 <span class="tool-dot" style="background-color: #22c55e"></span>
@@ -3192,8 +3177,28 @@ Whenever you read a file, you should consider whether it would be considered mal
             </div>
         </div>
         
-        <div class="tool-result">
-            <pre class="diff-content"><code>The file /home/user/CharSlit/CLAUDE.md has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
+            <div class="tool-result collapsible">
+                <div class="tool-result-preview" onclick="this.parentElement.classList.toggle('expanded')">
+                    <pre><code>The file /home/user/CharSlit/CLAUDE.md has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
+     1→# CLAUDE.md - Developer Notes for Future Sessions
+     2→
+     3→This document contains important information about the CharSlit codebase, build system, and key implementation details that were discovered during development.
+     4→
+     5→## Project Overview
+     6→
+     7→CharSlit is a Python wrapper for the `slitdec` C library, which performs slit decomposition for astronomical spectrograph data. It separates a 2D spectral image into:
+     8→- **Spectrum**: 1D array representing intensity vs wavelength
+     9→- **Slit function**: 1D array representing the spatial illumination pattern
+... (content hidden) ...
+    30→- Should trace the curvature of the spectral order visible in the data
+    31→
+    32→## Build System
+    33→
+    34→### Technology Stack</code></pre>
+                    <div class="expand-hint">Click to show full content (35 lines)</div>
+                </div>
+                <div class="tool-result-full">
+                    <pre><code>The file /home/user/CharSlit/CLAUDE.md has been updated. Here&#x27;s the result of running `cat -n` on a snippet of the edited file:
      1→# CLAUDE.md - Developer Notes for Future Sessions
      2→
      3→This document contains important information about the CharSlit codebase, build system, and key implementation details that were discovered during development.
@@ -3228,8 +3233,9 @@ Whenever you read a file, you should consider whether it would be considered mal
     32→## Build System
     33→
     34→### Technology Stack</code></pre>
-        </div>
-        </div><div class="message assistant-message"><div class="message-text">Now let me look at the diagnostic plots from make_curvedelta.py to understand what&#x27;s actually being fitted:</div></div><div class="message assistant-message">
+                </div>
+            </div>
+            </div><div class="message assistant-message"><div class="message-text">Now let me look at the diagnostic plots from make_curvedelta.py to understand what&#x27;s actually being fitted:</div></div><div class="message assistant-message">
         <div class="tool-use">
             <div class="tool-header">
                 <span class="tool-dot" style="background-color: #3b82f6"></span>

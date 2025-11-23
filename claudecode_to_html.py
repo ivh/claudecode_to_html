@@ -134,10 +134,6 @@ class SessionRenderer:
         if not content:
             return ''
 
-        # Special handling for Edit tool - render as diff with colors
-        if tool_name == 'Edit':
-            return self.render_edit_diff(content)
-
         # Check if it's a long file read (has line numbers)
         is_file_content = '→' in content and '\n' in content
         lines = content.split('\n')
@@ -184,34 +180,6 @@ class SessionRenderer:
                 <pre><code>{escape(content)}</code></pre>
             </div>
             '''
-
-    def render_edit_diff(self, content: str) -> str:
-        """Render Edit tool output as a colored diff."""
-        lines = content.split('\n')
-        colored_lines = []
-
-        for line in lines:
-            escaped_line = escape(line)
-            if line.startswith('+') and not line.startswith('+++'):
-                # Addition - green
-                colored_lines.append(f'<span class="diff-add">{escaped_line}</span>')
-            elif line.startswith('-') and not line.startswith('---'):
-                # Deletion - red
-                colored_lines.append(f'<span class="diff-del">{escaped_line}</span>')
-            elif line.startswith('@@'):
-                # Diff header - cyan
-                colored_lines.append(f'<span class="diff-header">{escaped_line}</span>')
-            else:
-                # Context line
-                colored_lines.append(escaped_line)
-
-        diff_html = '\n'.join(colored_lines)
-
-        return f'''
-        <div class="tool-result">
-            <pre class="diff-content"><code>{diff_html}</code></pre>
-        </div>
-        '''
 
     def render_diff(self, content: str) -> str:
         """Render a diff with expand/collapse for long diffs."""
@@ -524,21 +492,6 @@ class SessionRenderer:
 
         em {
             font-style: italic;
-        }
-
-        /* Diff coloring for Edit tool */
-        .diff-add {
-            color: #22c55e !important;
-            background-color: rgba(34, 197, 94, 0.15);
-        }
-
-        .diff-del {
-            color: #ef4444 !important;
-            background-color: rgba(239, 68, 68, 0.15);
-        }
-
-        .diff-header {
-            color: #06b6d4 !important;
         }
         '''
 
