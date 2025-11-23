@@ -507,9 +507,9 @@ class SessionRenderer:
 
         .tool-result {
             margin: 8px 0;
-            background-color: #1e1e1e;
+            background-color: #f9fafb;
             border-radius: 4px;
-            border: 1px solid #3a3a3a;
+            border: 1px solid #e5e7eb;
             overflow: hidden;
         }
 
@@ -533,22 +533,22 @@ class SessionRenderer:
         .expand-hint {
             text-align: center;
             padding: 8px;
-            background-color: #2a2a2a;
-            color: #9ca3af;
+            background-color: #e5e7eb;
+            color: #6b7280;
             font-size: 13px;
-            border-top: 1px solid #3a3a3a;
+            border-top: 1px solid #d1d5db;
             cursor: pointer;
         }
 
         .expand-hint:hover {
-            background-color: #333333;
+            background-color: #d1d5db;
         }
 
         pre {
             margin: 0;
             padding: 12px;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
+            background-color: #ffffff;
+            color: #1f2937;
             border-radius: 4px;
             overflow-x: auto;
             font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
@@ -559,6 +559,7 @@ class SessionRenderer:
         code {
             font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
             font-size: 13px;
+            color: #1f2937;
         }
 
         .message-text code {
@@ -567,6 +568,18 @@ class SessionRenderer:
             padding: 2px 6px;
             border-radius: 3px;
             font-size: 12px;
+        }
+
+        .message-text pre {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            margin: 8px 0;
+        }
+
+        .message-text pre code {
+            background-color: transparent;
+            color: #d4d4d4;
+            padding: 0;
         }
 
         .diff-block {
